@@ -1,20 +1,12 @@
-type User = {
+export type User = {
   id: string;
   email: string;
 };
 
-export function fetchUsers(): Promise<User[]> {
-  return fetch("http://localhost:3001/users")
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error("Failed to fetch users");
-      }
-      return res.json();
-    })
-    .catch((error) => {
-      console.error("Error fetching users:", error);
-      return [];
-    });
+export async function fetchUsers() {
+  return fetch("http://localhost:3001/users").then(
+    (res) => res.json() as Promise<User[]>
+  );
 }
 
 export function createUser(user: User) {
@@ -23,12 +15,12 @@ export function createUser(user: User) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(user), // Убрали лишнюю вложенность
+    body: JSON.stringify(user),
   }).then((res) => res.json());
 }
 
-export function deleteUser(userId: string) {
-  return fetch(`http://localhost:3001/users/${userId}`, {
+export function deleteUser(id: string) {
+  return fetch(`http://localhost:3001/users/${id}`, {
     method: "DELETE",
   }).then((res) => res.json());
 }

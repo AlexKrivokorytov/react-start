@@ -1,110 +1,116 @@
-import { Suspense, useState, useEffect, useTransition } from "react"
-import { createUser, fetchUsers, deleteUser } from "../../shared/api"
+import { Suspense, useActionState, useOptimistic } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import { useUsers } from "./use-users";
+import { CreateUserAction, DeleteUserAction } from "./actions";
 
 type User = {
-  id: string
-  email: string
-}
+  id: string;
+  email: string;
+};
 
 export function UsersPage() {
-  const [users, setUsers] = useState<User[]>([])
-  const [isPending, startTransition] = useTransition()
-
-  const refetchUsers = () => {
-    startTransition(() => {
-      fetchUsers().then(setUsers)
-    })
-  }
-
-  useEffect(() => {
-    refetchUsers()
-  }, [])
-
+  const { useUsersList, createUserAction, deleteUserAction } = useUsers();
   return (
     <main className="container mx-auto p-4 pt-10 flex flex-col gap-4">
       <h1 className="text-3xl font-bold underline">Users</h1>
-      <CreateUserForm refetchUsers={refetchUsers} />
-      <Suspense fallback={<div>Loading...</div>}>
-        <UsersList users={users} refetchUsers={refetchUsers} />
-      </Suspense>
+      <CreateUserForm createUserAction={createUserAction} />
+      <ErrorBoundary
+        fallbackRender={(e) => (
+          <div className="text-red-500">
+            Something went wrong: {JSON.stringify(e)}
+          </div>
+        )}
+      >
+        <Suspense fallback={<div>Loading...</div>}>
+          <UsersList
+            deleteUserAction={deleteUserAction}
+            useUsersList={useUsersList}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </main>
-  )
+  );
 }
 
-export function CreateUserForm({ refetchUsers }: { refetchUsers: () => void }) {
-  const [email, setEmail] = useState("")
-  const [isPending, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(false)
+export function CreateUserForm({
+  createUserAction,
+}: {
+  createUserAction: CreateUserAction;
+}) {
+  const [state, dispatch] = useActionState(createUserAction, {
+    email: "",
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    startTransition(async () => {
-      await createUser({
-        email,
-        id: crypto.randomUUID(),
-      })
-      refetchUsers()
-      setEmail("")
-      setIsLoading(false)
-    })
-  }
+  const [optimisticState] = useOptimistic(state);
 
   return (
-    <form className="flex gap-2" onSubmit={handleSubmit}>
+    <form className="flex gap-2" action={dispatch}>
       <input
+        name="email"
         type="email"
         className="border p-2 rounded"
-        value={email}
-        disabled={isPending || isLoading}
-        onChange={(e) => setEmail(e.target.value)}
-        required
+        defaultValue={optimisticState.email}
       />
       <button
-        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
-        disabled={isPending || isLoading}
+        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         type="submit"
       >
-        {isLoading ? "Adding..." : "Add"}
+        Add
       </button>
+      {optimisticState.error && <div className="text-red-500">{optimisticState.error}</div>}
     </form>
-  )
+  );
 }
 
-export function UsersList({ users, refetchUsers }: { users: User[], refetchUsers: () => void }) {
+function UsersList({
+  deleteUserAction,
+  useUsersList,
+}: {
+  useUsersList: () => User[];
+  deleteUserAction: DeleteUserAction;
+}) {
+  const users = useUsersList();
+
+  if (!users || users.length === 0) {
+    return <div>No users found.</div>;
+  }
+
   return (
     <div className="flex flex-col">
       {users.map((user) => (
-        <UserCard key={user.id} user={user} refetchUsers={refetchUsers} />
+        <UserCard
+          key={user.id}
+          user={user}
+          deleteUserAction={deleteUserAction}
+        />
       ))}
     </div>
-  )
+  );
 }
 
-export function UserCard({ user, refetchUsers }: { user: User, refetchUsers: () => void }) {
-  const [isPending, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleDelete = async () => {
-    setIsLoading(true)
-    startTransition(async () => {
-      await deleteUser(user.id)
-      refetchUsers()
-      setIsLoading(false)
-    })
-  }
+export function UserCard({
+  user,
+  deleteUserAction,
+}: {
+  user: User;
+  deleteUserAction: DeleteUserAction;
+}) {
+  const [state, handleDelete] = useActionState(deleteUserAction, {});
 
   return (
     <div className="border p-2 m-2 rounded bg-gray-100 flex gap-2">
       {user.email}
-      <button
-        className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-auto disabled:bg-gray-400"
-        type="button"
-        onClick={handleDelete}
-        disabled={isPending || isLoading}
-      >
-        {isLoading ? "Deleting..." : "Delete"}
-      </button>
+
+      <form className="ml-auto">
+        <input type="hidden" name="id" value={user.id} />
+        <button
+          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-auto disabled:bg-gray-400"
+          formAction={handleDelete}
+        >
+          Delete
+          {state.error && <div className="text-red-500">{state.error}</div>}
+        </button>
+      </form>
     </div>
-  )
+  );
 }
